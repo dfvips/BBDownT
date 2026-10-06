@@ -1,7 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
-using System.Security.Authentication;
 using static BBDownT.Core.Logger;
 
 namespace BBDownT.Core.Util;
@@ -178,133 +177,50 @@ public static class HTTPUtil
 
     public static async Task<string> GetWebSourceAsync(string url, string? userAgent = null)
     {
-        string htmlCode = await GetWebSourceAsync(GetWebHttpClient(Config.COOKIE_IS_INTL), url, userAgent);
+        using var webResponse = (await SendWebRequestAsync(HttpMethod.Get, url, userAgent, sendCookie: true)).EnsureSuccessStatusCode();
+        string htmlCode = await webResponse.Content.ReadAsStringAsync();
         LogDebug("Response: {0}", htmlCode);
         return htmlCode;
     }
 
     internal static async Task<string> GetAuthenticatedWebSourceAsync(string url)
     {
-        string htmlCode = await GetWebSourceAsync(GetWebHttpClient(Config.COOKIE_IS_INTL), url,
-            forceAuthenticatedProfile: true);
+        using var webResponse = (await SendWebRequestAsync(
+            HttpMethod.Get, url, null, sendCookie: true, forceAuthenticatedProfile: true)).EnsureSuccessStatusCode();
+        string htmlCode = await webResponse.Content.ReadAsStringAsync();
         LogDebug("Response: {0}", htmlCode);
         return htmlCode;
     }
 
-    internal static async Task<string> GetIntlAppSourceAsync(
-        string url,
-        HttpClient? httpClient = null,
-        CancellationToken cancellationToken = default,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
-    {
-        // App credentials never share the domestic cookie jar or redirect policy.
-        var json = await ExecuteWebRequestAsync(httpClient ?? IntlApiHttpClient, HttpMethod.Get, url,
-            "Bilibili Freedoooooom/MarkII", Config.COOKIE_IS_INTL, false,
-            (response, token) => response.Content.ReadAsStringAsync(token), cancellationToken, delay, null,
-            configureRequest: request =>
-            {
-                request.Headers.TryAddWithoutValidation("APP-KEY", "bstar_a");
-                request.Headers.TryAddWithoutValidation("ENV", "prod");
-            });
-        // Successful responses include signed media URLs; leave their contents out of logs.
-        LogDebug("国际站 App 响应: {0} 字符", json.Length);
-        return json;
-    }
-
-    internal static Task<string> GetWebSourceAsync(
-        HttpClient httpClient,
-        string url,
-        string? requestedUserAgent = null,
-        bool sendCookie = true,
-        bool forceAuthenticatedProfile = false,
-        CancellationToken cancellationToken = default,
-        Func<TimeSpan, CancellationToken, Task>? delay = null,
-        Action<string>? log = null,
-        Func<RequestIdentity, RequestIdentity?>? rotateIdentity = null)
-        => ExecuteWebRequestAsync(httpClient, HttpMethod.Get, url, requestedUserAgent, sendCookie,
-            forceAuthenticatedProfile, (response, token) => response.Content.ReadAsStringAsync(token),
-            cancellationToken, delay, log, rotateIdentity);
-
-    private static Task<T> ExecuteWebRequestAsync<T>(
-        HttpClient httpClient,
+    private static async Task<HttpResponseMessage> SendWebRequestAsync(
         HttpMethod method,
         string url,
         string? requestedUserAgent,
         bool sendCookie,
-        bool forceAuthenticatedProfile,
-        Func<HttpResponseMessage, CancellationToken, Task<T>> readResponse,
-        CancellationToken cancellationToken,
-        Func<TimeSpan, CancellationToken, Task>? delay,
-        Action<string>? log,
-        Func<RequestIdentity, RequestIdentity?>? rotateIdentity = null,
-        Action<HttpRequestMessage>? configureRequest = null)
+        bool forceAuthenticatedProfile = false)
     {
-        // Capture once per logical request; ordinary network retries keep all identity headers.
-        var identity = ResolveRequestIdentity(url, requestedUserAgent, sendCookie, forceAuthenticatedProfile);
-        var riskControlRetried = false;
-        rotateIdentity ??= RotateAutomaticIdentity;
-        return NetworkRetry.ExecuteAsync(async token =>
+        var firstIdentity = ResolveRequestIdentity(url, requestedUserAgent, sendCookie, forceAuthenticatedProfile);
+        // International credentials stay on the checked HTTPS destination;
+        // automatic redirects must never carry the explicit Cookie elsewhere.
+        var httpClient = GetWebHttpClient(Config.COOKIE_IS_INTL);
+        using var webRequest = CreateWebRequest(method, url, firstIdentity, sendCookie);
+        LogDebug("获取网页内容: Url: {0}, Headers: {1}", url, webRequest.Headers);
+        var response = await httpClient.SendAsync(webRequest, HttpCompletionOption.ResponseHeadersRead);
+        if (response.StatusCode != HttpStatusCode.PreconditionFailed || requestedUserAgent is not null)
         {
-            // ResponseHeadersRead leaves body reads outside HttpClient.Timeout. Apply the same
-            // deadline to the entire attempt, including the body and the one permitted 412 retry.
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            if (httpClient.Timeout != Timeout.InfiniteTimeSpan) deadline.CancelAfter(httpClient.Timeout);
-            try
-            {
-                while (true)
-                {
-                    using var request = CreateWebRequest(method, url, identity, sendCookie);
-                    configureRequest?.Invoke(request);
-                    LogDebug("获取网页内容: Url: {0}, Headers: {1}", url, request.Headers);
-                    using var response = await httpClient.SendAsync(request,
-                        HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-                    if (response.StatusCode == HttpStatusCode.PreconditionFailed
-                        && requestedUserAgent is null && !riskControlRetried)
-                    {
-                        riskControlRetried = true;
-                        var replacement = rotateIdentity(identity);
-                        if (replacement is not null)
-                        {
-                            LogDebug(identity.BrowserProfile is null
-                                ? "服务端返回HTTP 412，自动更换User-Agent后重试"
-                                : "服务端返回HTTP 412，自动更换完整浏览器请求配置后重试");
-                            identity = replacement.Value;
-                            continue;
-                        }
-                    }
-                    NetworkRetry.EnsureSuccessStatusCode(response);
-                    try
-                    {
-                        return await readResponse(response, deadline.Token);
-                    }
-                    catch (HttpRequestException error) when (IsUnclassifiedResponseReadError(error))
-                    {
-                        // HttpContent wraps a plain transport IOException as Unknown. Only this
-                        // remote body-read boundary can identify it without retrying local IO.
-                        throw new DownloadInterruptedException("HTTP response body was interrupted.", error);
-                    }
-                }
-            }
-            catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
-            {
-                throw new OperationCanceledException("HTTP request timed out.",
-                    new TimeoutException("HTTP request timed out.", error), deadline.Token);
-            }
-        }, NetworkRetry.RequestDelays, "获取网页", cancellationToken, delay, log);
-    }
-
-    private static bool IsUnclassifiedResponseReadError(HttpRequestException error)
-    {
-        if (error.HttpRequestError != HttpRequestError.Unknown || error.StatusCode.HasValue
-            || error.InnerException?.GetType() != typeof(IOException)) return false;
-        for (Exception? cause = error.InnerException; cause is not null; cause = cause.InnerException)
-        {
-            // InvalidDataException includes deterministic gzip/deflate corruption. Explicit
-            // protocol errors and cancellation retain their original classification as well.
-            if (cause is InvalidDataException or HttpIOException or HttpRequestException
-                or AuthenticationException or OperationCanceledException) return false;
+            return response;
         }
-        return true;
+
+        var retryIdentity = RotateAutomaticIdentity(firstIdentity);
+        if (retryIdentity is null) return response;
+
+        response.Dispose();
+        LogDebug(firstIdentity.BrowserProfile is null
+            ? "服务端返回HTTP 412，自动更换User-Agent后重试"
+            : "服务端返回HTTP 412，自动更换完整浏览器请求配置后重试");
+        using var retryRequest = CreateWebRequest(method, url, retryIdentity.Value, sendCookie);
+        LogDebug("重试获取网页内容: Url: {0}, Headers: {1}", url, retryRequest.Headers);
+        return await httpClient.SendAsync(retryRequest, HttpCompletionOption.ResponseHeadersRead);
     }
 
     internal static void ApplyWebRequestHeaders(
@@ -435,7 +351,7 @@ public static class HTTPUtil
         return retryIdentity;
     }
 
-    internal readonly record struct RequestIdentity(
+    private readonly record struct RequestIdentity(
         string UserAgent,
         BrowserRequestProfile? BrowserProfile);
 
@@ -443,23 +359,11 @@ public static class HTTPUtil
     public static async Task<string> GetWebLocationAsync(string url)
     {
         bool sendCookie = ShouldSendCookie(url);
-        // International credentials stay on the checked HTTPS destination;
-        // automatic redirects must never carry the explicit Cookie elsewhere.
-        string location = await GetWebLocationAsync(GetWebHttpClient(Config.COOKIE_IS_INTL), url, sendCookie);
+        using var webResponse = (await SendWebRequestAsync(HttpMethod.Head, url, null, sendCookie)).EnsureSuccessStatusCode();
+        string location = webResponse.RequestMessage?.RequestUri?.AbsoluteUri ?? url;
         LogDebug("Location: {0}", location);
         return location;
     }
-
-    internal static Task<string> GetWebLocationAsync(
-        HttpClient httpClient,
-        string url,
-        bool sendCookie = true,
-        CancellationToken cancellationToken = default,
-        Func<TimeSpan, CancellationToken, Task>? delay = null,
-        Action<string>? log = null)
-        => ExecuteWebRequestAsync(httpClient, HttpMethod.Head, url, null, sendCookie, false,
-            (response, _) => Task.FromResult(response.RequestMessage?.RequestUri?.AbsoluteUri ?? url),
-            cancellationToken, delay, log);
 
     public static async Task<byte[]> GetPostResponseAsync(string Url, byte[] postData, Dictionary<string, string>? headers = null)
     {

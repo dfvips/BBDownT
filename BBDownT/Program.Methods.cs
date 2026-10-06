@@ -209,7 +209,7 @@ internal partial class Program
         DownloadConfig config, Func<string, string, DownloadConfig, Task>? download = null)
     {
         if (option.SkipCover || option.OnlyShowInfo) return false;
-        await (download ?? ((source, destination, settings) => DownloadFileAsync(source, destination, settings)))(url, path, config);
+        await (download ?? DownloadFileAsync)(url, path, config);
         return true;
     }
 
@@ -275,16 +275,14 @@ internal partial class Program
             LogDebug("文件路径：{0}", webCookieFilePath);
             Config.COOKIE = loaded.Cookie;
         }
-        if (!myOption.UseIntlApi && myOption.UseTvApi && string.IsNullOrEmpty(Config.TOKEN)
-            && File.Exists(Path.Combine(APP_DIR, "BBDownTTV.data")))
+        if (string.IsNullOrEmpty(Config.TOKEN) && File.Exists(Path.Combine(APP_DIR, "BBDownTTV.data")) && myOption.UseTvApi)
         {
             Log("加载本地token...");
             LogDebug("文件路径：{0}", Path.Combine(APP_DIR, "BBDownTTV.data"));
             Config.TOKEN = File.ReadAllText(Path.Combine(APP_DIR, "BBDownTTV.data"));
             Config.TOKEN = Config.TOKEN.Replace("access_token=", "");
         }
-        if (!myOption.UseIntlApi && myOption.UseAppApi && string.IsNullOrEmpty(Config.TOKEN)
-            && File.Exists(Path.Combine(APP_DIR, "BBDownTApp.data")))
+        if (string.IsNullOrEmpty(Config.TOKEN) && File.Exists(Path.Combine(APP_DIR, "BBDownTApp.data")) && myOption.UseAppApi)
         {
             Log("加载本地token...");
             LogDebug("文件路径：{0}", Path.Combine(APP_DIR, "BBDownTApp.data"));
@@ -517,43 +515,15 @@ internal partial class Program
     /// 下载轨道
     /// </summary>
     /// <returns></returns>
-    internal static string GetTrackResumeIdentity(Page page, string apiType, string role,
-        Video? video = null, Audio? audio = null, string? variant = null)
+    private static async Task DownloadTrackAsync(string url, string destPath, DownloadConfig downloadConfig, bool video)
     {
-        var fields = new[]
-        {
-            apiType, page.aid, page.cid, page.epid, role, variant ?? "",
-            video?.id ?? audio?.id ?? "", video?.codecs ?? audio?.codecs ?? "",
-            video?.res ?? "", video?.fps ?? "",
-            (video?.bandwith ?? audio?.bandwith ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture)
-        };
-        var identity = string.Concat(fields.Select(value => value.Length + ":" + value));
-        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
-    }
-
-    internal static string GetIntlPlaybackId(VInfo info, string originalId)
-        => !string.IsNullOrEmpty(info.IntlSeasonId) && info.PagesInfo.All(page => string.IsNullOrEmpty(page.aid))
-            && originalId.StartsWith("ep:", StringComparison.Ordinal)
-            ? "intl:" + info.IntlSeasonId : originalId;
-
-    private static async Task DownloadTrackAsync(string url, string destPath, DownloadConfig downloadConfig,
-        bool video, string resourceIdentity)
-    {
-        downloadConfig = new DownloadConfig
-        {
-            UseAria2c = downloadConfig.UseAria2c, Aria2cArgs = downloadConfig.Aria2cArgs,
-            ForceHttp = downloadConfig.ForceHttp, MultiThread = downloadConfig.MultiThread,
-            RelatedTask = downloadConfig.RelatedTask, RestrictedOutputRoot = downloadConfig.RestrictedOutputRoot,
-            ResourceIdentity = resourceIdentity, IsBilibiliMedia = true
-        };
         if (downloadConfig.MultiThread && !url.Contains("-cmcc-"))
         {
             var downloadedClips = await MultiThreadDownloadFileAsync(url, destPath, downloadConfig);
             if (downloadedClips.Length > 0)
             {
                 Log($"合并{(video ? "视频" : "音频")}分片...");
-                await MergeTrackClipsAsync(downloadedClips, destPath, downloadConfig);
+                MergeTrackClips(downloadedClips, destPath);
             }
         }
         else

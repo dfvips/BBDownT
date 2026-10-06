@@ -25,15 +25,11 @@ internal static class MediaOutput
         }
     }
 
-    internal static void DeleteInput(string input, string destination, Action<string>? delete = null)
+    internal static void DeleteInput(string input, string destination)
     {
         if (string.IsNullOrEmpty(input)) return;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (!string.Equals(Path.GetFullPath(input), Path.GetFullPath(destination), comparison))
-        {
-            var remove = delete ?? File.Delete;
-            remove(input);
-            remove(input + ".resume");
-        }
+            File.Delete(input);
     }
 }

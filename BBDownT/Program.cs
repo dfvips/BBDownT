@@ -591,16 +591,15 @@ partial class Program
             vInfo, myOption, selectedPages, SinglePageDefaultSavePath, MultiPageDefaultSavePath);
         var runner = new PageDownloadRunner(
             CheckAidFromFile, SaveAidToFile,
-            (milliseconds, token) => Task.Delay(milliseconds, token), message => Log(message));
+            milliseconds => Task.Delay(milliseconds), message => Log(message));
         var subtitleSession = new SubtitleSelection.Session();
-        var playbackId = GetIntlPlaybackId(vInfo, aidOri);
 
         var useAidArchive = AudioLanguageSelection.UseAidArchive(myOption);
         if (myOption.SaveArchivesToFile && !useAidArchive)
             Log("已选择配音版本，不读写默认配音的下载归档；常规混流模式按带语言后缀的输出文件检查是否已下载。");
         await runner.RunAsync(plan.Pages, useAidArchive, delay,
             page => DownloadPageAsync(page, myOption, vInfo, plan.Pages, encodingPriority, dfnPriority, firstEncoding,
-                downloadDanmaku, downloadDanmakuFormats, input, plan.SavePathFormat, lang, playbackId, apiType, relatedTask, subtitleSession),
+                downloadDanmaku, downloadDanmakuFormats, input, plan.SavePathFormat, lang, aidOri, apiType, relatedTask, subtitleSession),
             vInfo.PagesInfo);
     }
 
@@ -615,8 +614,7 @@ partial class Program
         string pic = vInfo.Pic;
         long pubTime = vInfo.PubTime;
         bool selected = false; //用户是否已经手动选择过了轨道
-        var pageRetry = new PageDownloadRetry();
-        TimeSpan retryDelay;
+        int retryCount = 0;
         var progressiveSelection = new ProgressiveStreamSelection();
         var requestedAudioLanguage = AudioLanguageSelection.Normalize(myOption.AudioLanguage);
         Task<ParsedResult> FetchTracks(string? language, string? quality = null) =>
@@ -820,8 +818,6 @@ partial class Program
                 Video? selectedVideo = parsedResult.VideoTracks.ElementAtOrDefault(vIndex);
                 Audio? selectedAudio = parsedResult.AudioTracks.ElementAtOrDefault(aIndex);
                 Audio? selectedBackgroundAudio = parsedResult.BackgroundAudioTracks.ElementAtOrDefault(aIndex);
-                var actualAudioLanguage = AudioLanguageSelection.Normalize(parsedResult.CurrentAudioLanguage)
-                    ?? AudioLanguageSelection.Normalize(parsedResult.DefaultAudioLanguage) ?? requestedAudioLanguage;
 
                 LogDebug("Format Before: " + savePathFormat);
                 savePath = FormatSavePath(savePathFormat, title, selectedVideo, selectedAudio, p, pagesCount, apiType, pubTime, myOption.RestrictedOutputRoot);
@@ -911,24 +907,20 @@ partial class Program
                         myOption.UseMP4box = true;
                     }
                     Log($"开始下载P{p.index}视频...");
-                    await DownloadTrackAsync(selectedVideo.baseUrl, videoPath, downloadConfig, video: true,
-                        resourceIdentity: GetTrackResumeIdentity(p, apiType, "video", video: selectedVideo));
+                    await DownloadTrackAsync(selectedVideo.baseUrl, videoPath, downloadConfig, video: true);
                 }
 
                 if (selectedAudio != null)
                 {
                     Log($"开始下载P{p.index}音频...");
-                    await DownloadTrackAsync(selectedAudio.baseUrl, audioPath, downloadConfig, video: false,
-                        resourceIdentity: GetTrackResumeIdentity(p, apiType, "audio", audio: selectedAudio, variant: actualAudioLanguage));
+                    await DownloadTrackAsync(selectedAudio.baseUrl, audioPath, downloadConfig, video: false);
                 }
 
                 if (selectedBackgroundAudio != null)
                 {
                     var backgroundPath = $"{p.DownloadId}/{p.DownloadId}.{p.cid}.P{p.index}.back_ground.m4a";
                     Log($"开始下载P{p.index}背景配音...");
-                    await DownloadTrackAsync(selectedBackgroundAudio.baseUrl, backgroundPath, downloadConfig, video: false,
-                        resourceIdentity: GetTrackResumeIdentity(p, apiType, "background-audio", audio: selectedBackgroundAudio,
-                            variant: actualAudioLanguage));
+                    await DownloadTrackAsync(selectedBackgroundAudio.baseUrl, backgroundPath, downloadConfig, video: false);
                     audioMaterial.Add(new AudioMaterial("背景音频", "", backgroundPath));
                 }
 
@@ -937,9 +929,7 @@ partial class Program
                     foreach (var role in parsedResult.RoleAudioList)
                     {
                         Log($"开始下载P{p.index}配音[{role.title}]...");
-                        await DownloadTrackAsync(role.audio[aIndex].baseUrl, role.path, downloadConfig, video: false,
-                            resourceIdentity: GetTrackResumeIdentity(p, apiType, "role-audio", audio: role.audio[aIndex],
-                                variant: (actualAudioLanguage ?? "") + ":" + role.title + ":" + role.personName));
+                        await DownloadTrackAsync(role.audio[aIndex].baseUrl, role.path, downloadConfig, video: false);
                         audioMaterial.Add(new AudioMaterial(role));
                     }
                 }
@@ -1034,9 +1024,7 @@ partial class Program
                     videoPath = $"{p.DownloadId}/{p.DownloadId}.P{p.index}.{p.cid}.{i.ToString(pad)}.mp4";
                     files.Add(videoPath);
                     Log($"开始下载P{p.index}视频, 片段({(i + 1).ToString(pad)}/{clips.Count})...");
-                    await DownloadTrackAsync(link, videoPath, downloadConfig, video: true,
-                        resourceIdentity: GetTrackResumeIdentity(p, apiType, "progressive-video",
-                            video: parsedResult.VideoTracks.FirstOrDefault(), variant: i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    await DownloadTrackAsync(link, videoPath, downloadConfig, video: true);
                 }
                 Log($"下载P{p.index}完毕");
                 Log("开始合并分段...");
@@ -1088,11 +1076,12 @@ partial class Program
             }
             return DownloadPageOutcome.Completed;
         }
-        catch (Exception ex) when (pageRetry.TryGetDelay(ex, out retryDelay))
+        catch (Exception ex) when (ex is not AudioLanguageUnavailableException and not IntlApiException)
         {
-            LogError(NetworkRetry.Describe(ex));
-            LogWarn($"下载出现异常，{retryDelay.TotalSeconds:0}秒后重新解析此分P并续传...");
-            await Task.Delay(retryDelay);
+            if (++retryCount > 2) throw;
+            LogError(ex.Message);
+            LogWarn("下载出现异常, 3秒后将进行自动重试...");
+            await Task.Delay(3000);
             goto downloadPage;
         }
     }
@@ -1167,7 +1156,7 @@ partial class Program
         {
             Console.BackgroundColor = ConsoleColor.Red;
             Console.ForegroundColor = ConsoleColor.White;
-            var msg = RedactSensitiveText(Config.DEBUG_LOG ? e.ToString() : e.Message);
+            var msg = Config.DEBUG_LOG ? e.ToString() : e.Message;
             Console.Write($"{msg}{Environment.NewLine}");
             if (e is not IntlApiException) Console.Write("请尝试升级到最新版本后重试!");
             Console.ResetColor();

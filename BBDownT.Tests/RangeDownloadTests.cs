@@ -125,4 +125,107 @@ public class RangeDownloadTests
         Assert.Throws<InvalidDataException>(() =>
             BBDownTDownloadUtil.GetTotalFileSize(HttpStatusCode.NoContent, null, null));
     }
+
+    [Fact]
+    public async Task RangeDownload_SkipsCompletedClipWithoutRequesting()
+    {
+        using var files = new MediaTestDirectory();
+        var clip = files.Write("00000_track.vclip", "ABCD");
+        var sidecar = files.Write("00000_track.vclip.resume", "validator");
+        var requests = 0;
+        using var client = new HttpClient(new CountingHandler(_ =>
+        {
+            requests++;
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+        var reported = new List<(long Downloaded, long Total)>();
+
+        await BBDownTDownloadUtil.RangeDownloadToTmpAsync(0, "https://cdn.test/track.mp4", clip, 0, 3,
+            (_, downloaded, total) => reported.Add((downloaded, total)), true, client);
+
+        Assert.Equal(0, requests);
+        Assert.False(File.Exists(sidecar));
+        Assert.Equal("ABCD", File.ReadAllText(clip));
+        (long, long)[] expected = [(4, 4)];
+        Assert.Equal(expected, reported);
+    }
+
+    [Fact]
+    public async Task RangeDownload_ResumesPartialClipThroughResumeValidator()
+    {
+        using var files = new MediaTestDirectory();
+        var clip = files.Write("00000_track.vclip", "AB");
+        var sidecar = clip + ".resume";
+        await new DownloadResumeValidator("\"entity-v1\"", null).SaveAsync(sidecar);
+        var ranges = new List<string?>();
+        var ifRanges = new List<string?>();
+        using var client = new HttpClient(new CountingHandler(request =>
+        {
+            ranges.Add(request.Headers.Range?.ToString());
+            ifRanges.Add(request.Headers.IfRange?.EntityTag?.ToString());
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new ByteArrayContent("CD"u8.ToArray())
+            };
+            response.Headers.ETag = EntityTagHeaderValue.Parse("\"entity-v1\"");
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(2, 3, 4);
+            return response;
+        }));
+
+        await BBDownTDownloadUtil.RangeDownloadToTmpAsync(0, "https://cdn.test/track.mp4", clip, 0, 3,
+            (_, _, _) => { }, true, client);
+
+        Assert.Equal("bytes=2-3", Assert.Single(ranges));
+        Assert.Equal("\"entity-v1\"", ifRanges[0]);
+        Assert.Equal("ABCD", File.ReadAllText(clip));
+        Assert.False(File.Exists(sidecar));
+    }
+
+    [Fact]
+    public async Task RangeDownload_RestartsUnvalidatedPartialFromScratch()
+    {
+        using var files = new MediaTestDirectory();
+        var clip = files.Write("00000_track.vclip", "XX");
+        var ranges = new List<string?>();
+        using var client = new HttpClient(new CountingHandler(request =>
+        {
+            ranges.Add(request.Headers.Range?.ToString());
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new ByteArrayContent("ABCD"u8.ToArray())
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, 3, 4);
+            return response;
+        }));
+
+        await BBDownTDownloadUtil.RangeDownloadToTmpAsync(0, "https://cdn.test/track.mp4", clip, 0, 3,
+            (_, _, _) => { }, true, client);
+
+        Assert.Equal("bytes=0-3", Assert.Single(ranges));
+        Assert.Equal("ABCD", File.ReadAllText(clip));
+    }
+
+    [Fact]
+    public async Task RangeDownload_ResetsClipForRetryWhenRemoteEntityChanged()
+    {
+        using var files = new MediaTestDirectory();
+        var clip = files.Write("00000_track.vclip", "AB");
+        var sidecar = clip + ".resume";
+        await new DownloadResumeValidator("\"entity-v1\"", null).SaveAsync(sidecar);
+        using var client = new HttpClient(new CountingHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("NEW!"u8.ToArray()) }));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            BBDownTDownloadUtil.RangeDownloadToTmpAsync(0, "https://cdn.test/track.mp4", clip, 0, 3,
+                (_, _, _) => { }, true, client));
+
+        Assert.Equal(0, new FileInfo(clip).Length);
+        Assert.False(File.Exists(sidecar));
+    }
+
+    private sealed class CountingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken) => Task.FromResult(respond(request));
+    }
 }
