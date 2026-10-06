@@ -296,14 +296,14 @@ internal static class BBDownTDownloadUtil
                     progress.Report((double)clipProgress.Values.Sum() / fileSize, clipProgress.Values.Sum());
                 }, true, httpClient, config.RestrictedOutputRoot);
             }
-            catch (NotSupportedException)
+            catch (NotSupportedException ex)
             {
-                if (++retry == 3) throw new Exception($"服务器可能并不支持多线程下载, 请使用 --multi-thread false 关闭多线程");
+                if (++retry == 3) throw new Exception($"服务器可能并不支持多线程下载, 请使用 --multi-thread false 关闭多线程", ex);
                 goto reDown;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                if (++retry == 3) throw new Exception($"Failed to download clip {clip.index}");
+                if (++retry == 3) throw new Exception($"Failed to download clip {clip.index}", ex);
                 goto reDown;
             }
         });

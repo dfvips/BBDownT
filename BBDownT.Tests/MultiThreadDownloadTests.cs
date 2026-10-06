@@ -57,21 +57,30 @@ public class MultiThreadDownloadTests
     {
         using var files = new MediaTestDirectory();
         var destination = files.FilePath("track.mp4");
-        files.Write("00000_track.vclip", "ABCD");
+        const long perClip = 20 * 1024 * 1024;
+        var fileSize = perClip + 4;
+
+        // 分片按 20MB 划分，fileSize=perClip+4 恰好产生两个分片。
+        var completed = files.FilePath("00000_track.vclip");
+        using (var stream = new FileStream(completed, FileMode.Create, FileAccess.Write))
+        {
+            stream.SetLength(perClip);
+        }
         var partial = files.Write("00001_track.vclip", "EF");
+        files.FilePath(partial + ".resume");
         await new DownloadResumeValidator("\"entity-v1\"", null).SaveAsync(partial + ".resume");
         var ranges = new List<string?>();
         using var client = new HttpClient(new Handler(request =>
         {
-            ranges.Add(request.Headers.Range?.ToString());
+            lock (ranges) ranges.Add(request.Headers.Range?.ToString());
             if (request.Headers.Range is null)
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("ABCDEFGH"u8.ToArray()) };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new DeclaredLengthContent(fileSize) };
             var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
             {
                 Content = new ByteArrayContent("GH"u8.ToArray())
             };
             response.Headers.ETag = EntityTagHeaderValue.Parse("\"entity-v1\"");
-            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(6, 7, 8);
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(perClip + 2, perClip + 3, fileSize);
             return response;
         }));
 
@@ -81,8 +90,8 @@ public class MultiThreadDownloadTests
         BBDownTDownloadUtil.MergeTrackClips(manifest, destination);
         Assert.Equal(2, ranges.Count);
         Assert.Null(ranges[0]);
-        Assert.Equal("bytes=6-7", ranges[1]);
-        Assert.Equal("ABCDEFGH", File.ReadAllText(destination));
+        Assert.Equal($"bytes={perClip + 2}-{perClip + 3}", ranges[1]);
+        Assert.Equal(fileSize, new FileInfo(destination).Length);
         Assert.False(File.Exists(partial + ".resume"));
     }
 
@@ -117,6 +126,19 @@ public class MultiThreadDownloadTests
         Assert.Equal("bytes=0-3", ranges[2]);
         Assert.Equal("NEW!", File.ReadAllText(destination));
         Assert.False(File.Exists(partial + ".resume"));
+    }
+
+    // 声明超大 Content-Length 但不实际传输响应体，用于构造多分片的文件大小。
+    private sealed class DeclaredLengthContent(long declaredLength) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => Task.CompletedTask;
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = declaredLength;
+            return true;
+        }
     }
 
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
