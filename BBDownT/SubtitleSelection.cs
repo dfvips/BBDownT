@@ -51,6 +51,23 @@ internal static class SubtitleSelection
         return candidates.Where(s => s.FormatVariantGroup is null || preferred.Contains(s)).ToList();
     }
 
+    internal static List<Subtitle> OrderForMux(IReadOnlyList<Subtitle> subtitles, bool international)
+    {
+        if (!international) return subtitles.ToList();
+        return subtitles
+            .OrderBy(FamilyRank)
+            .ThenBy(subtitle => subtitle.lan, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static int FamilyRank(Subtitle subtitle) => Family(subtitle.lan).ToLowerInvariant() switch
+    {
+        "zh" when subtitle.lan.Equals("zh-Hans", StringComparison.OrdinalIgnoreCase) => 0,
+        "zh" when subtitle.lan.Equals("zh-Hant", StringComparison.OrdinalIgnoreCase) => 1,
+        "en" => 2,
+        _ => 3
+    };
+
     private static string Family(string language) =>
         (language.StartsWith("ai-", StringComparison.OrdinalIgnoreCase) ? language[3..] : language).Split('-')[0];
 

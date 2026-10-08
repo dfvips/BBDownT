@@ -6,6 +6,12 @@ namespace BBDownT.Tests;
 public class SubtitleSourceTests
 {
     [Fact]
+    public void ArabicLanguageCode_UsesArabicTrackMetadata()
+    {
+        Assert.Equal(("ara", "العربية"), SubUtil.GetSubtitleCode("ar"));
+    }
+
+    [Fact]
     public void ParseSubtitleWebResponse_ReadsIdsAndOptionalMetadataFromWireFields()
     {
         var aiTrack = Track(

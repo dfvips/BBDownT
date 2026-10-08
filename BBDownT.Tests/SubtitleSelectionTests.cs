@@ -15,6 +15,20 @@ public class SubtitleSelectionTests
     }
 
     [Fact]
+    public void InternationalMuxOrder_PrioritizesSimplifiedTraditionalAndEnglishThenAlphabetizesRest()
+    {
+        var subtitles = new[] { "vi", "en", "th", "zh-Hant", "ar", "zh-Hans", "fr" }
+            .Select(language => Track(language, type: 0)).ToArray();
+
+        var ordered = SubtitleSelection.OrderForMux(subtitles, international: true);
+
+        Assert.Equal(new[] { "zh-Hans", "zh-Hant", "en", "ar", "fr", "th", "vi" },
+            ordered.Select(subtitle => subtitle.lan));
+        Assert.Equal(subtitles.Select(subtitle => subtitle.lan),
+            SubtitleSelection.OrderForMux(subtitles, international: false).Select(subtitle => subtitle.lan));
+    }
+
+    [Fact]
     public void CandidateAndDefaultSelection_PreserveDomesticLanguageAndAiBehavior()
     {
         var option = new MyOption { SubtitleLanguage = "en", AiSubtitlePolicy = "include" };

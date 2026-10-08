@@ -957,7 +957,7 @@ partial class Program
                     (pagesCount > 1 || (bangumi && !vInfo.IsBangumiEnd)) ? p.title : "",
                     GetCoverForMux(myOption, coverPath),
                     lang,
-                    subtitleInfo, myOption.AudioOnly, myOption.VideoOnly, p.points, p.pubTime, myOption.SimplyMux, isHevc, myOption.RestrictedOutputRoot));
+                    SubtitleSelection.OrderForMux(subtitleInfo, myOption.UseIntlApi), myOption.AudioOnly, myOption.VideoOnly, p.points, p.pubTime, myOption.SimplyMux, isHevc, myOption.RestrictedOutputRoot));
                 if (!muxed)
                 {
                     LogError("合并失败"); return DownloadPageOutcome.Failed;
@@ -1046,7 +1046,7 @@ partial class Program
                     (pagesCount > 1 || (bangumi && !vInfo.IsBangumiEnd)) ? p.title : "",
                     GetCoverForMux(myOption, coverPath),
                     lang,
-                    subtitleInfo, myOption.AudioOnly, myOption.VideoOnly, p.points, p.pubTime, myOption.SimplyMux, restrictedOutputRoot: myOption.RestrictedOutputRoot));
+                    SubtitleSelection.OrderForMux(subtitleInfo, myOption.UseIntlApi), myOption.AudioOnly, myOption.VideoOnly, p.points, p.pubTime, myOption.SimplyMux, restrictedOutputRoot: myOption.RestrictedOutputRoot));
                 if (!muxed)
                 {
                     LogError("合并失败"); return DownloadPageOutcome.Failed;

@@ -145,6 +145,31 @@ public class IntlBangumiTests
         Assert.Equal(expected, await BBDownTUtil.GetAvIdAsync(url));
     }
 
+    [Fact]
+    public async Task InternationalShortLink_Resolves302TargetBeforeParsing()
+    {
+        const string shortUrl = "https://bili.im/bibgGE1";
+        const string destination = "https://www.bilibili.tv/en/play/35336";
+        var calls = 0;
+
+        var id = await BBDownTUtil.GetAvIdAsync(shortUrl, url =>
+        {
+            calls++;
+            Assert.Equal(shortUrl, url);
+            return Task.FromResult(destination);
+        });
+
+        Assert.Equal("intl:35336", id);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task InternationalShortLink_RejectsRedirectsOutsideInternationalVideoPages()
+    {
+        await Assert.ThrowsAsync<Exception>(() => BBDownTUtil.GetAvIdAsync(
+            "https://bili.im/bibgGE1", _ => Task.FromResult("https://example.test/")));
+    }
+
     [Theory]
     [InlineData("https://bilibili.tv.example.test/play/2110869")]
     [InlineData("https://example.test/bilibili.tv/play/2110869")]

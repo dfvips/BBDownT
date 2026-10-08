@@ -46,9 +46,17 @@ static partial class BBDownTUtil
             && candidate.CompareTo(current) > 0;
     }
 
-    public static async Task<string> GetAvIdAsync(string input)
+    public static Task<string> GetAvIdAsync(string input) => GetAvIdAsync(input, null);
+
+    internal static async Task<string> GetAvIdAsync(string input, Func<string, Task<string>>? resolveShortLink)
     {
         if (IntlBangumiUrl.TryParse(input, out var internationalId)) return internationalId;
+        if (IntlBangumiUrl.IsShortLink(input))
+        {
+            input = await (resolveShortLink ?? GetRedirectedUrlAsync)(input);
+            if (IntlBangumiUrl.TryParse(input, out internationalId)) return internationalId;
+            throw new Exception("国际站短链接没有跳转到有效的视频页面");
+        }
         var avid = input;
         if (input.StartsWith("http"))
         {

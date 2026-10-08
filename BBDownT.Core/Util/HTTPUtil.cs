@@ -10,6 +10,7 @@ public static class HTTPUtil
     public static readonly HttpClient AppHttpClient = CreateClient(useCookies: true, allowRedirects: true);
     internal static readonly HttpClient IntlApiHttpClient = CreateClient(useCookies: false, allowRedirects: false);
     internal static readonly HttpClient IntlMediaHttpClient = CreateClient(useCookies: false, allowRedirects: true, useProxy: false);
+    private static readonly HttpClient RedirectHttpClient = CreateClient(useCookies: false, allowRedirects: true);
 
     private static HttpClient CreateClient(bool useCookies, bool allowRedirects, bool useProxy = true)
         => new(CreateWebHandler(useCookies, allowRedirects, useProxy)) { Timeout = TimeSpan.FromMinutes(2) };
@@ -364,6 +365,15 @@ public static class HTTPUtil
         string location = webResponse.RequestMessage?.RequestUri?.AbsoluteUri ?? url;
         LogDebug("Location: {0}", location);
         return location;
+    }
+
+    internal static async Task<string> GetRedirectedUrlAsync(string url)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+        using var response = await RedirectHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        return response.RequestMessage?.RequestUri?.AbsoluteUri ?? url;
     }
 
     public static async Task<byte[]> GetPostResponseAsync(string Url, byte[] postData, Dictionary<string, string>? headers = null)

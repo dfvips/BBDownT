@@ -47,6 +47,7 @@ public static partial class SubUtil
             "sq"                => ("alb", "Gjuha shqipe"),
             "ase"               => ("ase", "American Sign Language"),
             "am"                => ("amh", "አማርኛ"),
+            "ar"                => ("ara", "العربية"),
             "arc"               => ("arc", "ܐܪܡܝܐ"),
             "hy"                => ("arm", "հայերեն"),
             "as"                => ("asm", "অসমীয়া"),

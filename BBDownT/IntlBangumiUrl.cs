@@ -7,6 +7,14 @@ namespace BBDownT;
 
 internal static partial class IntlBangumiUrl
 {
+    internal static bool IsShortLink(string input)
+    {
+        return Uri.TryCreate(input, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && uri.UserInfo.Length == 0
+            && uri.Host.Equals("bili.im", StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static bool TryParse(string input, out string id)
     {
         id = "";
