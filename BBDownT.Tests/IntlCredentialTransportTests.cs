@@ -251,6 +251,8 @@ public class IntlCredentialTransportTests
     public void InternationalDefault_PreservesSignedHttpsResourceAcrossCdnAndRequestConstruction()
     {
         using var config = new CredentialConfigScope();
+        const string intlMediaHost = "upos-sz-mirrorcosbstar1.bilivideo.com";
+        var expectedUrl = SignedUrl.Replace(new Uri(SignedUrl).Authority, intlMediaHost, StringComparison.Ordinal);
         var option = new MyOption { UseIntlApi = true };
         var video = new BBDownT.Core.Entity.Entity.Video { id = "64", dfn = "720P", codecs = "AVC", baseUrl = SignedUrl };
 
@@ -259,10 +261,10 @@ public class IntlCredentialTransportTests
         var arguments = BBDownTAria2c.BuildDownloadArguments(video.baseUrl, "/in-memory/video.mp4", "", option.UseIntlApi);
 
         Assert.False(option.ForceHttp);
-        Assert.Equal(SignedUrl, video.baseUrl);
-        Assert.Equal(SignedUrl, request.RequestUri!.OriginalString);
+        Assert.Equal(expectedUrl, video.baseUrl);
+        Assert.Equal(expectedUrl, request.RequestUri!.OriginalString);
         Assert.Equal("https", request.RequestUri.Scheme);
-        Assert.Contains("\"" + SignedUrl + "\"", arguments);
+        Assert.Contains("\"" + expectedUrl + "\"", arguments);
         Assert.False(request.Headers.Contains("Cookie"));
         Assert.DoesNotContain("Cookie:", arguments);
     }

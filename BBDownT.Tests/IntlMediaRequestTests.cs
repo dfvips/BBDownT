@@ -7,13 +7,14 @@ namespace BBDownT.Tests;
 public class IntlMediaRequestTests
 {
     private const string BackupHost = "upos-sz-mirrorcoso1.bilivideo.com";
+    private const string IntlMediaHost = "upos-sz-mirrorcosbstar1.bilivideo.com";
     private const string SignedUrl = "https://intl-cdn.example.test/media/video.m4s?deadline=123&signature=a%2Bb%2Fc%3D";
 
     [Theory]
     [InlineData(SignedUrl)]
     [InlineData("https://intl-cdn.example.test:448/media/video.m4s?signature=a%2Bb%2Fc%3D")]
     [InlineData("https://intl-cdn.akamaized.net/media/video.m4s?signature=a%2Bb%2Fc%3D")]
-    public void InternationalDefaultCdnPolicy_PreservesSignedVideoAndAudioUrls(string videoUrl)
+    public void InternationalDefaultCdnPolicy_ReplacesHostAndPreservesSignedVideoAndAudioUrls(string videoUrl)
     {
         var originalArea = Config.AREA;
         try
@@ -27,12 +28,15 @@ public class IntlMediaRequestTests
 
             Program.HandlePcdn(option, video, audio);
 
-            Assert.Equal(videoUrl, video.baseUrl);
-            Assert.Equal(SignedUrl, audio.baseUrl);
+            Assert.Equal(ReplaceHost(videoUrl, IntlMediaHost), video.baseUrl);
+            Assert.Equal(ReplaceHost(SignedUrl, IntlMediaHost), audio.baseUrl);
             Assert.Equal("", option.UposHost);
         }
         finally { Config.AREA = originalArea; }
     }
+
+    private static string ReplaceHost(string url, string host)
+        => url.Replace(new Uri(url).Authority, host, StringComparison.Ordinal);
 
     [Theory]
     [InlineData(true)]
