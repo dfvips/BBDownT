@@ -364,9 +364,17 @@ internal partial class Program
     /// <param name="audio"></param>
     internal static void HandlePcdn(MyOption myOption, Video? selectedVideo, Audio? selectedAudio)
     {
-        // International WEB URLs can be signed for the returned CDN host.
-        // Only an explicitly supplied host may override that choice.
-        if (myOption.UseIntlApi && string.IsNullOrEmpty(myOption.UposHost)) return;
+        // International media can use the domestic mirror host directly.
+        // Keep the signed path and query intact while changing only the host.
+        if (myOption.UseIntlApi)
+        {
+            var intlHost = string.IsNullOrWhiteSpace(myOption.UposHost) ? INTL_MEDIA_HOST : myOption.UposHost;
+            if (selectedVideo != null)
+                selectedVideo.baseUrl = UposRegex().Replace(selectedVideo.baseUrl, $"://{intlHost}/");
+            if (selectedAudio != null)
+                selectedAudio.baseUrl = UposRegex().Replace(selectedAudio.baseUrl, $"://{intlHost}/");
+            return;
+        }
         if (myOption.ForceReplaceHost && string.IsNullOrEmpty(myOption.UposHost))
             myOption.UposHost = BACKUP_HOST;
 

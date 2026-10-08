@@ -9,15 +9,16 @@ public static class HTTPUtil
 {
     public static readonly HttpClient AppHttpClient = CreateClient(useCookies: true, allowRedirects: true);
     internal static readonly HttpClient IntlApiHttpClient = CreateClient(useCookies: false, allowRedirects: false);
-    internal static readonly HttpClient IntlMediaHttpClient = CreateClient(useCookies: false, allowRedirects: true);
+    internal static readonly HttpClient IntlMediaHttpClient = CreateClient(useCookies: false, allowRedirects: true, useProxy: false);
 
-    private static HttpClient CreateClient(bool useCookies, bool allowRedirects)
-        => new(CreateWebHandler(useCookies, allowRedirects)) { Timeout = TimeSpan.FromMinutes(2) };
+    private static HttpClient CreateClient(bool useCookies, bool allowRedirects, bool useProxy = true)
+        => new(CreateWebHandler(useCookies, allowRedirects, useProxy)) { Timeout = TimeSpan.FromMinutes(2) };
 
-    internal static HttpClientHandler CreateWebHandler(bool useCookies, bool allowRedirects) => new()
+    internal static HttpClientHandler CreateWebHandler(bool useCookies, bool allowRedirects, bool useProxy = true) => new()
     {
         AllowAutoRedirect = allowRedirects,
         UseCookies = useCookies,
+        UseProxy = useProxy,
         AutomaticDecompression = DecompressionMethods.All,
         MaxConnectionsPerServer = 2048,
         ServerCertificateCustomValidationCallback = (_, _, _, sslPolicyErrors) =>

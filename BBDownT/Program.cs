@@ -27,6 +27,7 @@ namespace BBDownT;
 partial class Program
 {
     private static readonly string BACKUP_HOST = "upos-sz-mirrorcoso1.bilivideo.com";
+    private static readonly string INTL_MEDIA_HOST = "upos-sz-mirrorcosbstar1.bilivideo.com";
     public static string SinglePageDefaultSavePath { get; set; } = "<videoTitle>";
     public static string MultiPageDefaultSavePath { get; set; } = "<videoTitle>/[P<pageNumberWithZero>]<pageTitle>";
 
