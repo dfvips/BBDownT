@@ -16,7 +16,7 @@ namespace BBDownT;
 
 internal static class BBDownTSelfUpdater
 {
-    internal const string LatestReleaseUrl = "https://api.github.com/repos/LOVAHE/BBDownT/releases/latest";
+    internal const string LatestReleaseUrl = "https://api.github.com/repos/dfvips/BBDownT/releases/latest";
     private const long MaxBinaryBytes = 256 * 1024 * 1024;
 
     internal sealed record ReleaseAsset(Version Version, string Name, Uri Url, long Size, string Sha256);
@@ -122,7 +122,7 @@ internal static class BBDownTSelfUpdater
         var asset = matches[0];
         long size = asset.GetProperty("size").GetInt64();
         string digest = asset.GetProperty("digest").GetString() ?? "";
-        string expectedUrl = $"https://github.com/LOVAHE/BBDownT/releases/download/{Uri.EscapeDataString(tag)}/{assetName}";
+        string expectedUrl = $"https://github.com/dfvips/BBDownT/releases/download/{Uri.EscapeDataString(tag)}/{assetName}";
         if (asset.GetProperty("state").GetString() != "uploaded" || size <= 0 || size > MaxBinaryBytes
             || !digest.StartsWith("sha256:", StringComparison.Ordinal) || digest.Length != 71
             || !digest[7..].All(Uri.IsHexDigit)

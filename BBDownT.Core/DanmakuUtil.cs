@@ -79,7 +79,7 @@ public static class DanmakuUtil
         var sb = new StringBuilder();
         // ASS字幕文件头
         sb.AppendLine("[Script Info]");
-        sb.AppendLine("Script Updated By: BBDownT(https://github.com/LOVAHE/BBDownT)");
+        sb.AppendLine("Script Updated By: BBDownT(https://github.com/dfvips/BBDownT)");
         sb.AppendLine("ScriptType: v4.00+");
         sb.AppendLine($"PlayResX: {MONITOR_WIDTH}");
         sb.AppendLine($"PlayResY: {MONITOR_HEIGHT}");

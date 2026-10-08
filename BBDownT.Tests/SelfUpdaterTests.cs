@@ -283,7 +283,7 @@ public class SelfUpdaterTests
     }
 
     private static string ExpectedAssetUrl =>
-        $"https://github.com/LOVAHE/BBDownT/releases/download/v2.0.0/{AssetName}";
+        $"https://github.com/dfvips/BBDownT/releases/download/v2.0.0/{AssetName}";
 
     private static string CreateReleaseJson(
         string tag = "v2.0.0",

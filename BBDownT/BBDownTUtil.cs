@@ -24,8 +24,8 @@ static partial class BBDownTUtil
         {
             var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!;
             string nowVer = $"{ver.Major}.{ver.Minor}.{ver.Build}";
-            string redirectUrl = await GetWebLocationAsync("https://github.com/LOVAHE/BBDownT/releases/latest");
-            string latestVer = redirectUrl.Replace("https://github.com/LOVAHE/BBDownT/releases/tag/", "");
+            string redirectUrl = await GetWebLocationAsync("https://github.com/dfvips/BBDownT/releases/latest");
+            string latestVer = redirectUrl.Replace("https://github.com/dfvips/BBDownT/releases/tag/", "");
             latestVer = latestVer.TrimStart('v', 'V');
             if (IsNewerVersion(nowVer, latestVer))
             {

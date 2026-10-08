@@ -311,7 +311,7 @@ partial class Program
         var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!;
         Console.Write($"BBDownT version {ver.Major}.{ver.Minor}.{ver.Build}, Bilibili Downloader.\r\n");
         Console.ResetColor();
-        Console.Write("遇到问题请首先到以下地址查阅有无相关信息：\r\nhttps://github.com/LOVAHE/BBDownT/issues\r\n");
+        Console.Write("遇到问题请首先到以下地址查阅有无相关信息：\r\nhttps://github.com/dfvips/BBDownT/issues\r\n");
         Console.WriteLine();
 
         //处理配置文件
